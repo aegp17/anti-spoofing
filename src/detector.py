@@ -43,6 +43,7 @@ class DocumentDetector:
         has_text = self.heuristic.detect_text_presence(image_pil)
         has_face, face_count = self.heuristic.detect_face_presence(image_pil)
         has_doc_aspect = self.heuristic.check_document_aspect_ratio(image_pil)
+        has_card_chars = self.heuristic.detect_card_characteristics(image_pil)
         
         # Decision logic: Heuristic-based rules
         # PRIORITY: Text presence is the strongest indicator for documents
@@ -64,19 +65,34 @@ class DocumentDetector:
                 "method": "heuristic_rule_2_rectangle_aspect"
             }
         
-        # Rule 3: SELFIE if face is prominent and NO text
-        # (Text absence + prominent face = selfie)
-        if has_face and not has_text:
+        # Rule 3: DOCUMENT if card characteristics detected
+        # (Even if face is present, card characteristics suggest document/ID)
+        if has_card_chars and has_doc_aspect:
+            return {
+                "response": self.RESPONSE_DOCUMENT,
+                "method": "heuristic_rule_3_card_characteristics"
+            }
+        
+        # Rule 4: SELFIE if face is prominent and NO text and NO card characteristics
+        # (Text absence + card absence + prominent face = selfie)
+        if has_face and not has_text and not has_card_chars:
             return {
                 "response": self.RESPONSE_SELFIE,
-                "method": "heuristic_rule_3_face_no_text"
+                "method": "heuristic_rule_4_face_no_text_no_card"
             }
         
         # Fallback to ML model if available
         if self.ml_classifier and self.ml_classifier.available:
             return self._ml_classification(image_pil)
         
-        # Default fallback based on face presence
+        # Default fallback: if has card characteristics or rectangular shape, likely document
+        if has_card_chars or has_rect_shape:
+            return {
+                "response": self.RESPONSE_DOCUMENT,
+                "method": "default_card_or_shape"
+            }
+        
+        # Final default based on face presence
         if has_face:
             return {
                 "response": self.RESPONSE_SELFIE,

@@ -153,4 +153,36 @@ class HeuristicDetector:
         # Documents are typically wider than tall or have specific aspect ratios
         return (HeuristicDetector.DOCUMENT_ASPECT_RATIO_MAX <= aspect_ratio <= 
                 HeuristicDetector.DOCUMENT_ASPECT_RATIO_MIN)
+    
+    @staticmethod
+    def detect_card_characteristics(image_pil: Image.Image) -> bool:
+        """
+        Detect characteristics typical of ID cards/documents:
+        - Distinct rectangular borders
+        - Color patterns typical of official documents
+        - Sharp edges
+        
+        Args:
+            image_pil: PIL Image object
+            
+        Returns:
+            True if card-like characteristics detected
+        """
+        try:
+            img_np = np.array(image_pil)
+            gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+            
+            # Detect edges
+            edges = cv2.Canny(gray, 50, 150)
+            
+            # Count significant edges (more edges in documents)
+            edge_pixels = np.count_nonzero(edges)
+            total_pixels = gray.shape[0] * gray.shape[1]
+            edge_ratio = edge_pixels / total_pixels
+            
+            # Documents typically have 3-12% edge pixels
+            # Pure selfies have much less (mostly face/skin with smooth transitions)
+            return 0.03 < edge_ratio < 0.12
+        except Exception:
+            return False
 
