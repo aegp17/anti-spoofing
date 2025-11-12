@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.Python
+build/
+dist/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Documentation and examples
+docs/
+examples/
+*.md
+LICENSE
+
+# Tests
+.pytest_cache
+.coverage
+
+# OS
+Thumbs.db
+.DS_Store
+
