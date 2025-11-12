@@ -6,12 +6,21 @@ Endpoints:
     GET /health - Health check endpoint
 """
 import io
+import logging
+import time
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.detector import DocumentDetector
 from src.image_processor import ImageProcessor
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -30,8 +39,10 @@ app.add_middleware(
 )
 
 # Initialize detector
+logger.info("Initializing Document Detector...")
 detector = DocumentDetector(use_ml=True)
 image_processor = ImageProcessor()
+logger.info("✓ Service initialized successfully")
 
 
 @app.get("/health")
@@ -63,30 +74,43 @@ async def detect_image(file: UploadFile = File(...)):
     Raises:
         HTTPException: If image is invalid or processing fails
     """
+    start_time = time.time()
+    logger.info(f"📥 Processing upload: {file.filename}")
+    
     try:
         # Read file contents
         contents = await file.read()
         
         if not contents:
+            logger.warning(f"❌ Empty file uploaded: {file.filename}")
             raise HTTPException(
                 status_code=400,
                 detail="Empty file uploaded"
             )
         
+        file_size_mb = len(contents) / (1024 * 1024)
+        logger.debug(f"File size: {file_size_mb:.2f}MB")
+        
         # Validate and load image
         image = image_processor.validate_and_load(contents)
+        logger.debug(f"Image loaded: {image.size[0]}x{image.size[1]} pixels")
         
         # Perform detection
         result = detector.detect(image)
         
+        elapsed_time = time.time() - start_time
+        logger.info(f"✅ Detection complete: {result['response']} ({elapsed_time:.3f}s)")
+        
         return JSONResponse(result)
     
     except ValueError as e:
+        logger.error(f"❌ Validation error: {str(e)}")
         raise HTTPException(
             status_code=400,
             detail=str(e)
         )
     except Exception as e:
+        logger.exception(f"❌ Unexpected error: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
@@ -107,13 +131,17 @@ async def detect_batch(files: list[UploadFile] = File(...)):
     Raises:
         HTTPException: If processing fails
     """
+    start_time = time.time()
+    logger.info(f"📦 Batch processing started: {len(files)} files")
     results = []
     
     try:
-        for file in files:
+        for idx, file in enumerate(files, 1):
+            logger.debug(f"Processing batch item {idx}/{len(files)}: {file.filename}")
             contents = await file.read()
             
             if not contents:
+                logger.warning(f"⚠️ Empty file in batch: {file.filename}")
                 results.append({
                     "filename": file.filename,
                     "error": "Empty file"
@@ -127,15 +155,21 @@ async def detect_batch(files: list[UploadFile] = File(...)):
                     "filename": file.filename,
                     **detection
                 })
+                logger.debug(f"✓ {file.filename}: {detection['response']}")
             except ValueError as e:
+                logger.error(f"❌ {file.filename}: {str(e)}")
                 results.append({
                     "filename": file.filename,
                     "error": str(e)
                 })
         
+        elapsed_time = time.time() - start_time
+        logger.info(f"✅ Batch processing complete: {len(results)} files ({elapsed_time:.3f}s)")
+        
         return JSONResponse({"results": results})
     
     except Exception as e:
+        logger.exception(f"❌ Batch processing failed: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Batch processing failed: {str(e)}"

@@ -1,10 +1,13 @@
 """
 Main detection orchestrator that combines heuristics and ML models.
 """
+import logging
 from PIL import Image
 from typing import Dict, Any, Optional
 from .heuristic_detector import HeuristicDetector
 from .ml_classifier import MLClassifier
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentDetector:
@@ -38,12 +41,19 @@ class DocumentDetector:
         Returns:
             Dictionary with 'response' and optional 'confidence' score
         """
+        logger.debug("Starting detection analysis")
+        
         # Gather heuristic features
         has_rect_shape = self.heuristic.detect_rectangular_shape(image_pil)
         has_text = self.heuristic.detect_text_presence(image_pil)
         has_face, face_count = self.heuristic.detect_face_presence(image_pil)
         has_doc_aspect = self.heuristic.check_document_aspect_ratio(image_pil)
         has_card_chars = self.heuristic.detect_card_characteristics(image_pil)
+        
+        logger.debug(
+            f"Feature detection: rect={has_rect_shape}, text={has_text}, "
+            f"face={has_face}(count={face_count}), aspect={has_doc_aspect}, card={has_card_chars}"
+        )
         
         # Decision logic: Heuristic-based rules
         # PRIORITY: Text presence is the strongest indicator for documents
@@ -52,6 +62,7 @@ class DocumentDetector:
         # Rule 1: DOCUMENT if text is present (regardless of face)
         # Text is the strongest indicator that it's a document
         if has_text:
+            logger.info("✓ Document detected: Text presence confirmed")
             return {
                 "response": self.RESPONSE_DOCUMENT,
                 "method": "heuristic_rule_1_text_detected"
@@ -60,6 +71,7 @@ class DocumentDetector:
         # Rule 2: DOCUMENT if rectangular shape + document aspect ratio
         # (Even without detected text, shape is a strong indicator)
         if has_rect_shape and has_doc_aspect:
+            logger.info("✓ Document detected: Rectangle + aspect ratio confirmed")
             return {
                 "response": self.RESPONSE_DOCUMENT,
                 "method": "heuristic_rule_2_rectangle_aspect"
@@ -68,6 +80,7 @@ class DocumentDetector:
         # Rule 3: DOCUMENT if card characteristics detected
         # (Even if face is present, card characteristics suggest document/ID)
         if has_card_chars and has_doc_aspect:
+            logger.info("✓ Document detected: Card characteristics confirmed")
             return {
                 "response": self.RESPONSE_DOCUMENT,
                 "method": "heuristic_rule_3_card_characteristics"
@@ -76,6 +89,7 @@ class DocumentDetector:
         # Rule 4: SELFIE if face is prominent and NO text and NO card characteristics
         # (Text absence + card absence + prominent face = selfie)
         if has_face and not has_text and not has_card_chars:
+            logger.info("✓ Selfie detected: Face prominent, no text/card markers")
             return {
                 "response": self.RESPONSE_SELFIE,
                 "method": "heuristic_rule_4_face_no_text_no_card"
@@ -83,10 +97,12 @@ class DocumentDetector:
         
         # Fallback to ML model if available
         if self.ml_classifier and self.ml_classifier.available:
+            logger.info("Heuristics inconclusive, using ML model for classification")
             return self._ml_classification(image_pil)
         
         # Default fallback: if has card characteristics or rectangular shape, likely document
         if has_card_chars or has_rect_shape:
+            logger.warning("Using default: Card/rectangle detected, classifying as document")
             return {
                 "response": self.RESPONSE_DOCUMENT,
                 "method": "default_card_or_shape"
@@ -94,11 +110,13 @@ class DocumentDetector:
         
         # Final default based on face presence
         if has_face:
+            logger.warning("Using default: Face detected, classifying as selfie")
             return {
                 "response": self.RESPONSE_SELFIE,
                 "method": "default_face"
             }
         else:
+            logger.warning("Using default: No clear features, classifying as document")
             return {
                 "response": self.RESPONSE_DOCUMENT,
                 "method": "default_document"
