@@ -46,6 +46,16 @@ test_images/
 temp/
 *.log
 
+# Image files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.webp
+*.ico
+
 # Environment variables
 .env
 .env.local
