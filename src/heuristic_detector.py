@@ -68,6 +68,7 @@ class HeuristicDetector:
     def detect_text_presence(image_pil: Image.Image) -> bool:
         """
         Detect if image contains significant amount of text (characteristic of documents).
+        Uses multiple OCR strategies to improve detection.
         
         Args:
             image_pil: PIL Image object
@@ -76,13 +77,30 @@ class HeuristicDetector:
             True if text detected, False otherwise
         """
         try:
-            text = pytesseract.image_to_string(
-                image_pil,
-                config="--psm 6"
-            )
-            return len(text.strip()) > HeuristicDetector.MIN_TEXT_LENGTH
+            # Try multiple OCR configurations to improve detection
+            configs = [
+                "--psm 6",      # Assume single uniform block of text
+                "--psm 3",      # Fully automatic page segmentation
+                "--psm 1 -l eng"  # Automatic page segmentation with OSD
+            ]
+            
+            max_text_length = 0
+            
+            for config in configs:
+                try:
+                    text = pytesseract.image_to_string(image_pil, config=config)
+                    text_length = len(text.strip())
+                    max_text_length = max(max_text_length, text_length)
+                    
+                    # Early exit if we found enough text
+                    if text_length > HeuristicDetector.MIN_TEXT_LENGTH:
+                        return True
+                except Exception:
+                    continue
+            
+            return max_text_length > HeuristicDetector.MIN_TEXT_LENGTH
         except Exception as e:
-            print(f"Error in text detection: {str(e)}")
+            print(f"Warning: Text detection error: {str(e)}")
             return False
     
     @staticmethod

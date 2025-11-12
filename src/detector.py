@@ -42,28 +42,34 @@ class DocumentDetector:
         has_rect_shape = self.heuristic.detect_rectangular_shape(image_pil)
         has_text = self.heuristic.detect_text_presence(image_pil)
         has_face, face_count = self.heuristic.detect_face_presence(image_pil)
+        has_doc_aspect = self.heuristic.check_document_aspect_ratio(image_pil)
         
         # Decision logic: Heuristic-based rules
-        # Rule 1: Document detected if rectangular shape with text and no prominent face
-        if has_rect_shape and has_text and not has_face:
+        # PRIORITY: Text presence is the strongest indicator for documents
+        # (documents have text; selfies don't)
+        
+        # Rule 1: DOCUMENT if text is present (regardless of face)
+        # Text is the strongest indicator that it's a document
+        if has_text:
             return {
                 "response": self.RESPONSE_DOCUMENT,
-                "method": "heuristic_rule_1"
+                "method": "heuristic_rule_1_text_detected"
             }
         
-        # Rule 2: Selfie if face is prominent and no text
+        # Rule 2: DOCUMENT if rectangular shape + document aspect ratio
+        # (Even without detected text, shape is a strong indicator)
+        if has_rect_shape and has_doc_aspect:
+            return {
+                "response": self.RESPONSE_DOCUMENT,
+                "method": "heuristic_rule_2_rectangle_aspect"
+            }
+        
+        # Rule 3: SELFIE if face is prominent and NO text
+        # (Text absence + prominent face = selfie)
         if has_face and not has_text:
             return {
                 "response": self.RESPONSE_SELFIE,
-                "method": "heuristic_rule_2"
-            }
-        
-        # Rule 3: Document if rectangular aspect ratio with text
-        has_doc_aspect = self.heuristic.check_document_aspect_ratio(image_pil)
-        if has_doc_aspect and has_text:
-            return {
-                "response": self.RESPONSE_DOCUMENT,
-                "method": "heuristic_rule_3"
+                "method": "heuristic_rule_3_face_no_text"
             }
         
         # Fallback to ML model if available

@@ -15,12 +15,12 @@ class ImageProcessor:
     TARGET_SIZE = (224, 224)
     
     @staticmethod
-    def validate_and_load(image_bytes: bytes) -> Image.Image:
+    def validate_and_load(image_input) -> Image.Image:
         """
-        Validate and load image from bytes.
+        Validate and load image from bytes or file-like object.
         
         Args:
-            image_bytes: Raw image bytes
+            image_input: Raw image bytes or file-like object
             
         Returns:
             PIL Image object in RGB format
@@ -28,12 +28,21 @@ class ImageProcessor:
         Raises:
             ValueError: If image is invalid or unsupported
         """
-        if len(image_bytes) > ImageProcessor.MAX_FILE_SIZE:
-            raise ValueError("Image exceeds maximum size limit (10MB)")
+        import io
         
         try:
-            image = Image.open(image_bytes if hasattr(image_bytes, 'read') 
-                               else __import__('io').BytesIO(image_bytes))
+            # Handle file-like objects (BytesIO)
+            if hasattr(image_input, 'read'):
+                image_input.seek(0)  # Reset stream position
+                image_bytes = image_input.read()
+            else:
+                image_bytes = image_input
+            
+            if len(image_bytes) > ImageProcessor.MAX_FILE_SIZE:
+                raise ValueError("Image exceeds maximum size limit (10MB)")
+            
+            # Create BytesIO from bytes for PIL
+            image = Image.open(io.BytesIO(image_bytes))
             
             if image.format not in ImageProcessor.SUPPORTED_FORMATS:
                 raise ValueError(f"Unsupported image format: {image.format}")

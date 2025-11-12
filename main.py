@@ -74,7 +74,7 @@ async def detect_image(file: UploadFile = File(...)):
             )
         
         # Validate and load image
-        image = image_processor.validate_and_load(io.BytesIO(contents))
+        image = image_processor.validate_and_load(contents)
         
         # Perform detection
         result = detector.detect(image)
