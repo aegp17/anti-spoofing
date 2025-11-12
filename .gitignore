@@ -56,6 +56,10 @@ temp/
 *.webp
 *.ico
 
+# Test data directories
+test_pics/
+test_images/
+
 # Environment variables
 .env
 .env.local
