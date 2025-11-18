@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.detector import DocumentDetector
 from src.image_processor import ImageProcessor
+from src.deepfake_detector import DeepfakeDetector
 
 # Configure logging
 logging.basicConfig(
@@ -38,9 +39,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize detector
-logger.info("Initializing Document Detector...")
+# Initialize detectors
+logger.info("Initializing detectors...")
 detector = DocumentDetector(use_ml=True)
+deepfake_detector = DeepfakeDetector()
 image_processor = ImageProcessor()
 logger.info("✓ Service initialized successfully")
 
@@ -173,6 +175,162 @@ async def detect_batch(files: list[UploadFile] = File(...)):
         raise HTTPException(
             status_code=500,
             detail=f"Batch processing failed: {str(e)}"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# DEEPFAKE DETECTION ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@app.post("/analyze/deepfake/image")
+async def analyze_deepfake_image(file: UploadFile = File(...)):
+    """
+    Analyze image for deepfake indicators.
+    
+    Detects if an image is a real photo or a deepfake using:
+    - Face detection
+    - Heuristic analysis (texture, edges, consistency)
+    - Optional ML model (if available)
+    
+    Args:
+        file: Uploaded image file (JPEG, PNG)
+        
+    Returns:
+        JSON with deepfake detection result and confidence score
+        
+    Raises:
+        HTTPException: If image is invalid or processing fails
+    """
+    start_time = time.time()
+    logger.info(f"📸 Analyzing image for deepfakes: {file.filename}")
+    
+    try:
+        # Read file contents
+        contents = await file.read()
+        
+        if not contents:
+            logger.warning(f"❌ Empty file uploaded: {file.filename}")
+            raise HTTPException(
+                status_code=400,
+                detail="Empty file uploaded"
+            )
+        
+        file_size_mb = len(contents) / (1024 * 1024)
+        logger.debug(f"File size: {file_size_mb:.2f}MB")
+        
+        # Validate and load image
+        image = image_processor.validate_and_load(contents)
+        logger.debug(f"Image loaded: {image.size[0]}x{image.size[1]} pixels")
+        
+        # Perform deepfake analysis
+        result = deepfake_detector.detect_image(image)
+        
+        elapsed_time = time.time() - start_time
+        logger.info(
+            f"✅ Deepfake analysis complete: {result['response']} "
+            f"(confidence: {result['confidence']:.2%}, {elapsed_time:.3f}s)"
+        )
+        
+        return JSONResponse(result)
+    
+    except ValueError as e:
+        logger.error(f"❌ Validation error: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.exception(f"❌ Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@app.post("/analyze/deepfake/video")
+async def analyze_deepfake_video(
+    file: UploadFile = File(...),
+    frame_step: int = 10,
+    max_frames: int = 50
+):
+    """
+    Analyze video for deepfake indicators.
+    
+    Samples frames from video and analyzes them for deepfake patterns.
+    Aggregates scores to produce final confidence.
+    
+    Args:
+        file: Uploaded video file (MP4, AVI, MOV, etc.)
+        frame_step: Analyze every N-th frame (default: 10)
+        max_frames: Maximum frames to analyze (default: 50)
+        
+    Returns:
+        JSON with video deepfake detection result and aggregated scores
+        
+    Raises:
+        HTTPException: If video is invalid or processing fails
+    """
+    start_time = time.time()
+    logger.info(f"🎬 Analyzing video for deepfakes: {file.filename}")
+    
+    try:
+        # Read file contents
+        contents = await file.read()
+        
+        if not contents:
+            logger.warning(f"❌ Empty file uploaded: {file.filename}")
+            raise HTTPException(
+                status_code=400,
+                detail="Empty file uploaded"
+            )
+        
+        file_size_mb = len(contents) / (1024 * 1024)
+        logger.debug(f"File size: {file_size_mb:.2f}MB")
+        
+        # Save video temporarily
+        import tempfile
+        import os
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+            tmp.write(contents)
+            tmp_path = tmp.name
+        
+        logger.debug(f"Video saved to temp: {tmp_path}")
+        
+        try:
+            # Perform deepfake analysis
+            result = deepfake_detector.detect_video(
+                tmp_path,
+                frame_step=frame_step,
+                max_frames=max_frames
+            )
+            
+            elapsed_time = time.time() - start_time
+            logger.info(
+                f"✅ Video deepfake analysis complete: {result['response']} "
+                f"(mean confidence: {result['confidence_mean']:.2%}, {elapsed_time:.3f}s)"
+            )
+            
+            return JSONResponse(result)
+        
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                logger.debug(f"Temp file removed: {tmp_path}")
+    
+    except ValueError as e:
+        logger.error(f"❌ Validation error: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.exception(f"❌ Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
         )
 
 
