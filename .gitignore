@@ -46,17 +46,22 @@ test_images/
 temp/
 *.log
 
-# Image files - ALL formats
+# Image files - ALL formats (comprehensive)
+# Raster formats
 *.jpg
 *.JPG
 *.jpeg
 *.JPEG
+*.jpe
+*.JPE
 *.png
 *.PNG
 *.gif
 *.GIF
 *.bmp
 *.BMP
+*.dib
+*.DIB
 *.tiff
 *.TIFF
 *.tif
@@ -65,29 +70,89 @@ temp/
 *.WEBP
 *.ico
 *.ICO
+
+# Vector and document formats
 *.svg
 *.SVG
 *.eps
 *.EPS
+*.pdf
+*.PDF
+
+# Professional/Advanced formats
 *.psd
 *.PSD
+*.psb
+*.PSB
+*.ai
+*.AI
+*.cdr
+*.CDR
+*.xcf
+*.XCF
+
+# Raw and specialized formats
 *.raw
 *.RAW
+*.cr2
+*.CR2
+*.nef
+*.NEF
+*.arw
+*.ARW
+*.dng
+*.DNG
 *.heic
 *.HEIC
 *.heif
 *.HEIF
 *.jp2
 *.JP2
+*.j2k
+*.J2K
+*.jpx
+*.JPX
 *.jxr
 *.JXR
+*.wdp
+*.WDP
+
+# Compressed image formats
+*.tar
+*.tar.gz
+*.tar.bz2
+*.zip
+*.rar
+*.7z
 
 # Test data directories - Images
 test_pics/
 test_images/
 test_data/
+test_dataset/
 samples/
 examples/
+data/
+datasets/
+images/
+photos/
+pictures/
+
+# Video files (often used with image analysis)
+*.mp4
+*.MP4
+*.avi
+*.AVI
+*.mov
+*.MOV
+*.mkv
+*.MKV
+*.flv
+*.FLV
+*.wmv
+*.WMV
+*.webm
+*.WEBM
 
 # Environment variables
 .env
