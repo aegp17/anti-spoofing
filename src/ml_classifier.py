@@ -1,11 +1,23 @@
 """
 Machine Learning based classification module using MobileNetV2.
+
+Note: PyTorch is optional. Module gracefully handles missing torch installation.
 """
-import torch
-from torchvision import transforms
 from PIL import Image
 from typing import Optional
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Optional imports
+try:
+    import torch
+    from torchvision import transforms
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    logger.warning("PyTorch not available. ML classifier will be disabled.")
 
 
 class MLClassifier:
@@ -23,8 +35,14 @@ class MLClassifier:
             model_path: Optional path to model file. If not provided, uses default path.
         """
         self.model = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.available = False
+        self.transform = None
+        
+        if not TORCH_AVAILABLE:
+            logger.warning("PyTorch not installed. ML classifier disabled. Using heuristics only.")
+            return
+        
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         model_file = model_path or self.MODEL_PATH
         
@@ -33,12 +51,12 @@ class MLClassifier:
                 self.model = torch.jit.load(model_file, map_location=self.device)
                 self.model.eval()
                 self.available = True
-                print(f"✓ ML model loaded successfully from {model_file}")
+                logger.info(f"✓ ML model loaded successfully from {model_file}")
             except Exception as e:
-                print(f"⚠ Failed to load ML model: {str(e)}")
+                logger.warning(f"⚠ Failed to load ML model: {str(e)}")
                 self.available = False
         else:
-            print(f"⚠ ML model not found at {model_file}. Using heuristics only.")
+            logger.info(f"⚠ ML model not found at {model_file}. Using heuristics only.")
             self.available = False
         
         # Define image transformation pipeline
