@@ -46,19 +46,48 @@ test_images/
 temp/
 *.log
 
-# Image files
+# Image files - ALL formats
 *.jpg
+*.JPG
 *.jpeg
+*.JPEG
 *.png
+*.PNG
 *.gif
+*.GIF
 *.bmp
+*.BMP
 *.tiff
+*.TIFF
+*.tif
+*.TIF
 *.webp
+*.WEBP
 *.ico
+*.ICO
+*.svg
+*.SVG
+*.eps
+*.EPS
+*.psd
+*.PSD
+*.raw
+*.RAW
+*.heic
+*.HEIC
+*.heif
+*.HEIF
+*.jp2
+*.JP2
+*.jxr
+*.JXR
 
-# Test data directories
+# Test data directories - Images
 test_pics/
 test_images/
+test_data/
+samples/
+examples/
 
 # Environment variables
 .env
