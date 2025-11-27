@@ -68,31 +68,31 @@ class DocumentDetector:
                 "method": "heuristic_rule_1_text_detected"
             }
         
-        # Rule 2: DOCUMENT if rectangular shape + document aspect ratio
-        # (Even without detected text, shape is a strong indicator)
+        # Rule 2: SELFIE if face is prominent (STRONG PRIORITY)
+        # Face detection is very reliable for distinguishing selfies
+        if has_face:
+            logger.info("✓ Selfie detected: Face prominent detected")
+            return {
+                "response": self.RESPONSE_SELFIE,
+                "method": "heuristic_rule_2_face_prominent"
+            }
+        
+        # Rule 3: DOCUMENT if rectangular shape + document aspect ratio
+        # (Only if NO face is present, to avoid misclassifying face images)
         if has_rect_shape and has_doc_aspect:
             logger.info("✓ Document detected: Rectangle + aspect ratio confirmed")
             return {
                 "response": self.RESPONSE_DOCUMENT,
-                "method": "heuristic_rule_2_rectangle_aspect"
+                "method": "heuristic_rule_3_rectangle_aspect"
             }
         
-        # Rule 3: DOCUMENT if card characteristics detected
-        # (Even if face is present, card characteristics suggest document/ID)
+        # Rule 4: DOCUMENT if card characteristics detected
+        # (Only if NO face is present)
         if has_card_chars and has_doc_aspect:
             logger.info("✓ Document detected: Card characteristics confirmed")
             return {
                 "response": self.RESPONSE_DOCUMENT,
-                "method": "heuristic_rule_3_card_characteristics"
-            }
-        
-        # Rule 4: SELFIE if face is prominent and NO text and NO card characteristics
-        # (Text absence + card absence + prominent face = selfie)
-        if has_face and not has_text and not has_card_chars:
-            logger.info("✓ Selfie detected: Face prominent, no text/card markers")
-            return {
-                "response": self.RESPONSE_SELFIE,
-                "method": "heuristic_rule_4_face_no_text_no_card"
+                "method": "heuristic_rule_4_card_characteristics"
             }
         
         # Fallback to ML model if available

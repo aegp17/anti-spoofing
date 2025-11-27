@@ -6,6 +6,10 @@ import numpy as np
 import pytesseract
 from PIL import Image
 from typing import Tuple
+import signal
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class HeuristicDetector:
@@ -65,42 +69,38 @@ class HeuristicDetector:
         return False
     
     @staticmethod
-    def detect_text_presence(image_pil: Image.Image) -> bool:
+    def detect_text_presence(image_pil: Image.Image, timeout_seconds: int = 5) -> bool:
         """
         Detect if image contains significant amount of text (characteristic of documents).
-        Uses multiple OCR strategies to improve detection.
+        Uses a single fast OCR configuration with timeout.
         
         Args:
             image_pil: PIL Image object
+            timeout_seconds: Max seconds for OCR processing
             
         Returns:
             True if text detected, False otherwise
         """
         try:
-            # Try multiple OCR configurations to improve detection
-            configs = [
-                "--psm 6",      # Assume single uniform block of text
-                "--psm 3",      # Fully automatic page segmentation
-                "--psm 1 -l eng"  # Automatic page segmentation with OSD
-            ]
+            # Use fastest OCR config with psm 6 (single text block)
+            # This is faster and avoids hanging on non-text images
+            config = "--psm 6 --oem 0"
             
-            max_text_length = 0
-            
-            for config in configs:
-                try:
-                    text = pytesseract.image_to_string(image_pil, config=config)
-                    text_length = len(text.strip())
-                    max_text_length = max(max_text_length, text_length)
-                    
-                    # Early exit if we found enough text
-                    if text_length > HeuristicDetector.MIN_TEXT_LENGTH:
-                        return True
-                except Exception:
-                    continue
-            
-            return max_text_length > HeuristicDetector.MIN_TEXT_LENGTH
+            try:
+                text = pytesseract.image_to_string(image_pil, config=config)
+                text_length = len(text.strip())
+                
+                if text_length > HeuristicDetector.MIN_TEXT_LENGTH:
+                    logger.debug(f"✓ Text detected: {text_length} characters")
+                    return True
+                else:
+                    logger.debug(f"✗ No significant text found: {text_length} characters")
+                    return False
+            except Exception as e:
+                logger.warning(f"⚠️ OCR processing failed: {str(e)}")
+                return False
         except Exception as e:
-            print(f"Warning: Text detection error: {str(e)}")
+            logger.error(f"❌ Text detection error: {str(e)}")
             return False
     
     @staticmethod

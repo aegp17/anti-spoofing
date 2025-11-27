@@ -1,9 +1,22 @@
 """
-FastAPI application for document vs selfie detection.
+🎭 Multi-Purpose Detection Service
 
-Endpoints:
-    POST /detect - Detect if uploaded image is a document or selfie
-    GET /health - Health check endpoint
+Three independent detection modules:
+
+1. 📄 DOCUMENT DETECTION (/detect/document)
+   - Distinguishes: ID Document vs Selfie
+   - Detects: text, rectangular shapes, card characteristics
+   - Response: "id document detect" or "is selfie"
+
+2. 🎭 ANTI-SPOOFING (/detect/antispoofing)
+   - Distinguishes: Real Selfie vs Fake/Spoofed
+   - Detects: sharpness, skin texture, frequency content
+   - Response: "selfie" (real) or "spoofed" (fake)
+
+3. 🤖 DEEPFAKE DETECTION (/analyze/deepfake/image, /analyze/deepfake/video)
+   - Distinguishes: Real Face vs Deepfake
+   - Detects: facial artifacts, generation patterns
+   - Response: "likely_real" or "likely_deepfake"
 """
 import io
 import logging
@@ -12,6 +25,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.antispoofing_detector import AntiSpoofingDetector
 from src.detector import DocumentDetector
 from src.image_processor import ImageProcessor
 from src.deepfake_detector import DeepfakeDetector
@@ -25,8 +39,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Anti-Spoofing Document Detector",
-    description="Service to detect document vs selfie images",
+    title="Multi-Purpose Detection Service",
+    description="Document Detection | Anti-Spoofing | Deepfake Detection",
     version="1.0.0"
 )
 
@@ -39,13 +53,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize detectors
-logger.info("Initializing detectors...")
-detector = DocumentDetector(use_ml=True)
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
+logger.info("🚀 Initializing detection service...")
+antispoofing_detector = AntiSpoofingDetector()
+document_detector = DocumentDetector(use_ml=True)
 deepfake_detector = DeepfakeDetector()
 image_processor = ImageProcessor()
-logger.info("✓ Service initialized successfully")
+logger.info("✅ Service initialized successfully")
 
+
+# ============================================================================
+# HEALTH CHECK
+# ============================================================================
 
 @app.get("/health")
 async def health_check():
@@ -57,38 +79,48 @@ async def health_check():
     """
     return JSONResponse({
         "status": "healthy",
-        "service": "Anti-Spoofing Document Detector",
-        "version": "1.0.0"
+        "service": "Multi-Purpose Detection Service",
+        "version": "1.0.0",
+        "modules": [
+            "document_detection",
+            "anti_spoofing",
+            "deepfake_detection"
+        ]
     })
 
 
-@app.post("/detect")
-async def detect_image(file: UploadFile = File(...)):
+# ============================================================================
+# MODULE 1: DOCUMENT DETECTION
+# ============================================================================
+
+@app.post("/detect/document")
+async def detect_document(file: UploadFile = File(...)):
     """
-    Detect if uploaded image is a document or selfie.
+    📄 DOCUMENT DETECTION MODULE
+    
+    Detects if image is an ID document or a selfie.
     
     Args:
         file: Uploaded image file (JPEG, PNG)
         
     Returns:
-        JSON with detection result and optional confidence score
+        JSON with detection result:
+        - "id document detect": ID document (passport, cedula, etc.)
+        - "is selfie": Selfie image
         
     Raises:
         HTTPException: If image is invalid or processing fails
     """
     start_time = time.time()
-    logger.info(f"📥 Processing upload: {file.filename}")
+    logger.info(f"📄 [DOCUMENT] Processing upload: {file.filename}")
     
     try:
-        # Read file contents
+        # Read and validate file
         contents = await file.read()
         
         if not contents:
             logger.warning(f"❌ Empty file uploaded: {file.filename}")
-            raise HTTPException(
-                status_code=400,
-                detail="Empty file uploaded"
-            )
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
         
         file_size_mb = len(contents) / (1024 * 1024)
         logger.debug(f"File size: {file_size_mb:.2f}MB")
@@ -98,43 +130,237 @@ async def detect_image(file: UploadFile = File(...)):
         logger.debug(f"Image loaded: {image.size[0]}x{image.size[1]} pixels")
         
         # Perform detection
-        result = detector.detect(image)
+        result = document_detector.detect(image)
         
         elapsed_time = time.time() - start_time
-        logger.info(f"✅ Detection complete: {result['response']} ({elapsed_time:.3f}s)")
+        logger.info(f"✅ [DOCUMENT] Detection complete: {result['response']} ({elapsed_time:.3f}s)")
         
         return JSONResponse(result)
     
     except ValueError as e:
         logger.error(f"❌ Validation error: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"❌ Unexpected error: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# ============================================================================
+# MODULE 2: ANTI-SPOOFING DETECTION
+# ============================================================================
+
+@app.post("/detect/antispoofing")
+async def detect_antispoofing(file: UploadFile = File(...)):
+    """
+    🎭 ANTI-SPOOFING MODULE
+    
+    Detects if image is a real selfie or a fake/spoofed image.
+    
+    Args:
+        file: Uploaded image file (JPEG, PNG)
+        
+    Returns:
+        JSON with detection result:
+        - "selfie": Real selfie (confidence: 0.0-0.5)
+        - "spoofed": Fake/spoofed image (confidence: 0.5-1.0)
+        - "no_face_detected": No face found in image
+        
+    Raises:
+        HTTPException: If image is invalid or processing fails
+    """
+    start_time = time.time()
+    logger.info(f"🎭 [ANTISPOOFING] Processing upload: {file.filename}")
+    
+    try:
+        # Read and validate file
+        contents = await file.read()
+        
+        if not contents:
+            logger.warning(f"❌ Empty file uploaded: {file.filename}")
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
+        
+        file_size_mb = len(contents) / (1024 * 1024)
+        logger.debug(f"File size: {file_size_mb:.2f}MB")
+        
+        # Validate and load image
+        image = image_processor.validate_and_load(contents)
+        logger.debug(f"Image loaded: {image.size[0]}x{image.size[1]} pixels")
+        
+        # Perform anti-spoofing detection
+        result = antispoofing_detector.detect(image)
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"✅ [ANTISPOOFING] Detection complete: {result['response']} ({elapsed_time:.3f}s)")
+        
+        return JSONResponse(result)
+    
+    except ValueError as e:
+        logger.error(f"❌ Validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"❌ Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# ============================================================================
+# MODULE 3: DEEPFAKE DETECTION
+# ============================================================================
+
+@app.post("/analyze/deepfake/image")
+async def detect_deepfake_image(file: UploadFile = File(...)):
+    """
+    🤖 DEEPFAKE DETECTION MODULE - IMAGE
+    
+    Detects if image contains a deepfake face or is real.
+    
+    Args:
+        file: Uploaded image file (JPEG, PNG)
+        
+    Returns:
+        JSON with detection result:
+        - "likely_real": Real face
+        - "likely_deepfake": Deepfake detected
+        - "no_face_detected": No face found in image
+        - confidence: Float between 0.0 and 1.0
+        
+    Raises:
+        HTTPException: If image is invalid or processing fails
+    """
+    start_time = time.time()
+    logger.info(f"🤖 [DEEPFAKE-IMAGE] Processing upload: {file.filename}")
+    
+    try:
+        # Read and validate file
+        contents = await file.read()
+        
+        if not contents:
+            logger.warning(f"❌ Empty file uploaded: {file.filename}")
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
+        
+        file_size_mb = len(contents) / (1024 * 1024)
+        logger.debug(f"File size: {file_size_mb:.2f}MB")
+        
+        # Validate and load image
+        image = image_processor.validate_and_load(contents)
+        logger.debug(f"Image loaded: {image.size[0]}x{image.size[1]} pixels")
+        
+        # Perform deepfake detection
+        result = deepfake_detector.detect_image(image)
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"✅ [DEEPFAKE-IMAGE] Detection complete: {result['response']} ({elapsed_time:.3f}s)")
+        
+        return JSONResponse(result)
+    
+    except ValueError as e:
+        logger.error(f"❌ Validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"❌ Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.post("/analyze/deepfake/video")
+async def detect_deepfake_video(file: UploadFile = File(...)):
+    """
+    🤖 DEEPFAKE DETECTION MODULE - VIDEO
+    
+    Detects if video contains deepfake faces or is real.
+    
+    Args:
+        file: Uploaded video file (MP4, AVI, MOV, etc.)
+        
+    Returns:
+        JSON with detection result:
+        - "likely_real": Real faces throughout
+        - "likely_deepfake": Deepfake detected in frames
+        - "no_face_detected_in_video": No faces found
+        - confidence_mean: Average confidence across frames
+        - frames_evaluated: Number of frames analyzed
+        
+    Raises:
+        HTTPException: If video is invalid or processing fails
+    """
+    start_time = time.time()
+    logger.info(f"🤖 [DEEPFAKE-VIDEO] Processing upload: {file.filename}")
+    
+    try:
+        # Read and validate file
+        contents = await file.read()
+        
+        if not contents:
+            logger.warning(f"❌ Empty file uploaded: {file.filename}")
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
+        
+        file_size_mb = len(contents) / (1024 * 1024)
+        logger.debug(f"File size: {file_size_mb:.2f}MB")
+        
+        # Save video to temporary file
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+            tmp.write(contents)
+            video_path = tmp.name
+        
+        try:
+            # Perform deepfake detection
+            result = deepfake_detector.detect_video(video_path)
+            
+            elapsed_time = time.time() - start_time
+            logger.info(f"✅ [DEEPFAKE-VIDEO] Detection complete: {result['response']} ({elapsed_time:.3f}s)")
+            
+            return JSONResponse(result)
+        
+        finally:
+            # Clean up temporary file
+            import os
+            try:
+                os.unlink(video_path)
+            except:
+                pass
+    
+    except ValueError as e:
+        logger.error(f"❌ Validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"❌ Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# ============================================================================
+# LEGACY ENDPOINTS (For backwards compatibility)
+# ============================================================================
+
+@app.post("/detect")
+async def detect_image_legacy(file: UploadFile = File(...)):
+    """
+    ⚠️ LEGACY ENDPOINT - Use /detect/antispoofing instead
+    
+    Detect if uploaded image is a real selfie or spoofed/fake.
+    This endpoint is maintained for backwards compatibility.
+    
+    Args:
+        file: Uploaded image file (JPEG, PNG)
+        
+    Returns:
+        JSON with anti-spoofing detection result
+    """
+    logger.warning("⚠️ Legacy /detect endpoint used. Please use /detect/antispoofing instead.")
+    return await detect_antispoofing(file)
 
 
 @app.post("/detect/batch")
 async def detect_batch(files: list[UploadFile] = File(...)):
     """
-    Process multiple images in batch.
+    Process multiple images in batch for anti-spoofing detection.
     
     Args:
         files: List of image files
         
     Returns:
         JSON array with detection results for each image
-        
-    Raises:
-        HTTPException: If processing fails
     """
     start_time = time.time()
-    logger.info(f"📦 Batch processing started: {len(files)} files")
+    logger.info(f"🎭 [ANTISPOOFING-BATCH] Processing {len(files)} files")
     results = []
     
     try:
@@ -144,202 +370,23 @@ async def detect_batch(files: list[UploadFile] = File(...)):
             
             if not contents:
                 logger.warning(f"⚠️ Empty file in batch: {file.filename}")
-                results.append({
-                    "filename": file.filename,
-                    "error": "Empty file"
-                })
+                results.append({"filename": file.filename, "error": "Empty file"})
                 continue
             
             try:
                 image = image_processor.validate_and_load(io.BytesIO(contents))
-                detection = detector.detect(image)
-                results.append({
-                    "filename": file.filename,
-                    **detection
-                })
+                detection = antispoofing_detector.detect(image)
+                results.append({"filename": file.filename, **detection})
                 logger.debug(f"✓ {file.filename}: {detection['response']}")
             except ValueError as e:
                 logger.error(f"❌ {file.filename}: {str(e)}")
-                results.append({
-                    "filename": file.filename,
-                    "error": str(e)
-                })
+                results.append({"filename": file.filename, "error": str(e)})
         
         elapsed_time = time.time() - start_time
-        logger.info(f"✅ Batch processing complete: {len(results)} files ({elapsed_time:.3f}s)")
+        logger.info(f"✅ [ANTISPOOFING-BATCH] Processing complete: {len(results)} files ({elapsed_time:.3f}s)")
         
         return JSONResponse({"results": results})
     
     except Exception as e:
         logger.exception(f"❌ Batch processing failed: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Batch processing failed: {str(e)}"
-        )
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# DEEPFAKE DETECTION ENDPOINTS
-# ═══════════════════════════════════════════════════════════════════════
-
-
-@app.post("/analyze/deepfake/image")
-async def analyze_deepfake_image(file: UploadFile = File(...)):
-    """
-    Analyze image for deepfake indicators.
-    
-    Detects if an image is a real photo or a deepfake using:
-    - Face detection
-    - Heuristic analysis (texture, edges, consistency)
-    - Optional ML model (if available)
-    
-    Args:
-        file: Uploaded image file (JPEG, PNG)
-        
-    Returns:
-        JSON with deepfake detection result and confidence score
-        
-    Raises:
-        HTTPException: If image is invalid or processing fails
-    """
-    start_time = time.time()
-    logger.info(f"📸 Analyzing image for deepfakes: {file.filename}")
-    
-    try:
-        # Read file contents
-        contents = await file.read()
-        
-        if not contents:
-            logger.warning(f"❌ Empty file uploaded: {file.filename}")
-            raise HTTPException(
-                status_code=400,
-                detail="Empty file uploaded"
-            )
-        
-        file_size_mb = len(contents) / (1024 * 1024)
-        logger.debug(f"File size: {file_size_mb:.2f}MB")
-        
-        # Validate and load image
-        image = image_processor.validate_and_load(contents)
-        logger.debug(f"Image loaded: {image.size[0]}x{image.size[1]} pixels")
-        
-        # Perform deepfake analysis
-        result = deepfake_detector.detect_image(image)
-        
-        elapsed_time = time.time() - start_time
-        logger.info(
-            f"✅ Deepfake analysis complete: {result['response']} "
-            f"(confidence: {result['confidence']:.2%}, {elapsed_time:.3f}s)"
-        )
-        
-        return JSONResponse(result)
-    
-    except ValueError as e:
-        logger.error(f"❌ Validation error: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
-        )
-    except Exception as e:
-        logger.exception(f"❌ Unexpected error: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
-
-
-@app.post("/analyze/deepfake/video")
-async def analyze_deepfake_video(
-    file: UploadFile = File(...),
-    frame_step: int = 10,
-    max_frames: int = 50
-):
-    """
-    Analyze video for deepfake indicators.
-    
-    Samples frames from video and analyzes them for deepfake patterns.
-    Aggregates scores to produce final confidence.
-    
-    Args:
-        file: Uploaded video file (MP4, AVI, MOV, etc.)
-        frame_step: Analyze every N-th frame (default: 10)
-        max_frames: Maximum frames to analyze (default: 50)
-        
-    Returns:
-        JSON with video deepfake detection result and aggregated scores
-        
-    Raises:
-        HTTPException: If video is invalid or processing fails
-    """
-    start_time = time.time()
-    logger.info(f"🎬 Analyzing video for deepfakes: {file.filename}")
-    
-    try:
-        # Read file contents
-        contents = await file.read()
-        
-        if not contents:
-            logger.warning(f"❌ Empty file uploaded: {file.filename}")
-            raise HTTPException(
-                status_code=400,
-                detail="Empty file uploaded"
-            )
-        
-        file_size_mb = len(contents) / (1024 * 1024)
-        logger.debug(f"File size: {file_size_mb:.2f}MB")
-        
-        # Save video temporarily
-        import tempfile
-        import os
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-            tmp.write(contents)
-            tmp_path = tmp.name
-        
-        logger.debug(f"Video saved to temp: {tmp_path}")
-        
-        try:
-            # Perform deepfake analysis
-            result = deepfake_detector.detect_video(
-                tmp_path,
-                frame_step=frame_step,
-                max_frames=max_frames
-            )
-            
-            elapsed_time = time.time() - start_time
-            logger.info(
-                f"✅ Video deepfake analysis complete: {result['response']} "
-                f"(mean confidence: {result['confidence_mean']:.2%}, {elapsed_time:.3f}s)"
-            )
-            
-            return JSONResponse(result)
-        
-        finally:
-            # Clean up temp file
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-                logger.debug(f"Temp file removed: {tmp_path}")
-    
-    except ValueError as e:
-        logger.error(f"❌ Validation error: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
-        )
-    except Exception as e:
-        logger.exception(f"❌ Unexpected error: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8000,
-        log_level="info"
-    )
-
+        raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
