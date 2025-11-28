@@ -1,0 +1,27 @@
+# Dependencias para entrenamiento del modelo de Anti-Spoofing
+# Instalar con: pip install -r requirements.txt
+
+# PyTorch y TorchVision (ajustar según tu sistema)
+# Para CPU:
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Para GPU (CUDA 11.8), descomentar y usar en lugar de las líneas anteriores:
+# torch>=2.0.0+cu118 --index-url https://download.pytorch.org/whl/cu118
+# torchvision>=0.15.0+cu118 --index-url https://download.pytorch.org/whl/cu118
+
+# Para GPU (CUDA 12.1), descomentar y usar en lugar de las líneas anteriores:
+# torch>=2.0.0+cu121 --index-url https://download.pytorch.org/whl/cu121
+# torchvision>=0.15.0+cu121 --index-url https://download.pytorch.org/whl/cu121
+
+# Procesamiento de imágenes
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# Métricas y evaluación
+scikit-learn>=1.3.0
+
+# Utilidades (opcional, para visualización)
+# matplotlib>=3.7.0
+# tensorboard>=2.13.0
+
