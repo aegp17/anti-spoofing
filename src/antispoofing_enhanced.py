@@ -74,7 +74,8 @@ class EnhancedAntiSpoofingDetector:
         
         # Compute final score
         confidence = self._compute_final_score(analysis)
-        response = self.RESPONSE_REAL if confidence < 0.5 else self.RESPONSE_FAKE
+        # More conservative threshold: 0.55 instead of 0.5 to reduce false positives
+        response = self.RESPONSE_REAL if confidence < 0.55 else self.RESPONSE_FAKE
         
         logger.info(
             f"Enhanced detection complete: {response} "
@@ -206,35 +207,53 @@ class EnhancedAntiSpoofingDetector:
     
     def _detect_jpeg_artifacts(self, image_pil: Image.Image) -> float:
         """
-        PHASE 1: Detect JPEG compression artifacts.
+        PHASE 1: Detect JPEG compression artifacts (optimized).
         Real photos have different compression patterns than deepfakes.
         """
         try:
+            # Sample only center region for speed (most important area)
             img_array = np.array(image_pil)
-            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+            h, w = img_array.shape[:2]
             
-            # DCT analysis on 8x8 blocks
-            h, w = gray.shape
+            # Sample center 200x200 region
+            center_h, center_w = h // 2, w // 2
+            sample_size = min(200, h, w)
+            start_h = max(0, center_h - sample_size // 2)
+            start_w = max(0, center_w - sample_size // 2)
+            
+            gray = cv2.cvtColor(img_array[start_h:start_h+sample_size, start_w:start_w+sample_size], 
+                              cv2.COLOR_RGB2GRAY)
+            
+            # DCT analysis on sampled region (fewer blocks)
             block_size = 8
             total_blocks = 0
             zero_coefficient_ratio = 0
             
-            for i in range(0, h - block_size, block_size):
-                for j in range(0, w - block_size, block_size):
+            # Sample every 2nd block for speed
+            for i in range(0, gray.shape[0] - block_size, block_size * 2):
+                for j in range(0, gray.shape[1] - block_size, block_size * 2):
                     block = gray[i:i+block_size, j:j+block_size].astype(np.float32)
-                    dct_block = cv2.dct(block / 255.0)
-                    
-                    # Count zero coefficients
-                    zero_count = np.sum(np.abs(dct_block) < 1e-6)
-                    zero_coefficient_ratio += zero_count / (block_size * block_size)
-                    total_blocks += 1
+                    if block.shape == (block_size, block_size):
+                        dct_block = cv2.dct(block / 255.0)
+                        zero_count = np.sum(np.abs(dct_block) < 1e-5)
+                        zero_coefficient_ratio += zero_count / (block_size * block_size)
+                        total_blocks += 1
             
-            avg_zero_ratio = zero_coefficient_ratio / (total_blocks + 1e-8)
+            if total_blocks == 0:
+                return 0.5
             
-            # Real compressed photos: 30-50% zeros
-            # Deepfakes: different patterns
-            logger.debug(f"JPEG Zero Ratio: {avg_zero_ratio:.4f}")
-            return avg_zero_ratio
+            avg_zero_ratio = zero_coefficient_ratio / total_blocks
+            
+            # Normalize: Real photos typically 0.3-0.5, outside = suspicious
+            if 0.3 <= avg_zero_ratio <= 0.5:
+                jpeg_score = 0.2  # Real
+            elif avg_zero_ratio < 0.2 or avg_zero_ratio > 0.7:
+                jpeg_score = 0.8  # Suspicious
+            else:
+                jpeg_score = 0.5  # Uncertain
+            
+            logger.debug(f"JPEG Zero Ratio: {avg_zero_ratio:.4f} → score: {jpeg_score:.2f}")
+            return jpeg_score
         
         except Exception as e:
             logger.warning(f"JPEG artifact detection failed: {str(e)}")
@@ -296,27 +315,54 @@ class EnhancedAntiSpoofingDetector:
         # (0 = real, 1 = fake)
         
         # Sharpness: Sharp = real (lower score), Blurry = fake (higher score)
-        sharpness_score = 0.2 if sharpness > 100 else (0.7 if sharpness < 20 else 0.5)
+        # More conservative thresholds
+        if sharpness > 80:
+            sharpness_score = 0.15  # Very sharp = likely real
+        elif sharpness > 50:
+            sharpness_score = 0.3   # Sharp = probably real
+        elif sharpness < 15:
+            sharpness_score = 0.8  # Very blurry = likely fake
+        else:
+            sharpness_score = 0.5  # Medium = uncertain
         
         # Skin texture: Textured = real, Smooth = fake
-        skin_texture_score = 0.2 if skin_texture > 300 else (0.7 if skin_texture < 100 else 0.5)
+        if skin_texture > 250:
+            skin_texture_score = 0.15  # Textured = likely real
+        elif skin_texture > 150:
+            skin_texture_score = 0.3   # Some texture = probably real
+        elif skin_texture < 80:
+            skin_texture_score = 0.8   # Very smooth = likely fake
+        else:
+            skin_texture_score = 0.5   # Medium = uncertain
         
         # FFT entropy: High entropy = natural (real), Low entropy = artificial (fake)
-        fft_score = 0.2 if fft_entropy > 0.7 else (0.7 if fft_entropy < 0.4 else 0.5)
+        if fft_entropy > 0.65:
+            fft_score = 0.2   # High entropy = likely real
+        elif fft_entropy > 0.45:
+            fft_score = 0.4   # Medium-high = probably real
+        elif fft_entropy < 0.35:
+            fft_score = 0.8   # Low entropy = likely fake
+        else:
+            fft_score = 0.5   # Medium = uncertain
         
-        # JPEG artifacts: Use as-is
-        jpeg_score = jpeg_artifacts  # 0.3-0.5 = real, outside = fake
+        # JPEG artifacts: Already normalized in _detect_jpeg_artifacts
+        jpeg_score = jpeg_artifacts
         
-        # Color consistency: Already 0-1
-        color_score = color_consistency
+        # Color consistency: More conservative
+        if color_consistency < 0.3:
+            color_score = 0.2   # Consistent = likely real
+        elif color_consistency > 0.7:
+            color_score = 0.8   # Inconsistent = likely fake
+        else:
+            color_score = 0.5   # Medium = uncertain
         
-        # Weighted combination
+        # Weighted combination (prioritize more reliable metrics)
         weights = {
-            "sharpness": 0.15,
-            "skin_texture": 0.15,
-            "fft": 0.20,
-            "jpeg": 0.25,
-            "color": 0.25
+            "sharpness": 0.25,      # Most reliable
+            "skin_texture": 0.25,   # Very reliable
+            "fft": 0.20,            # Good signal
+            "jpeg": 0.15,           # Less reliable, slower
+            "color": 0.15           # Less reliable
         }
         
         final_score = (

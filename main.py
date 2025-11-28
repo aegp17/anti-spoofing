@@ -25,7 +25,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.antispoofing_detector import AntiSpoofingDetector
+from src.antispoofing_enhanced import EnhancedAntiSpoofingDetector
 from src.detector import DocumentDetector
 from src.image_processor import ImageProcessor
 from src.deepfake_detector import DeepfakeDetector
@@ -58,11 +58,11 @@ app.add_middleware(
 # ============================================================================
 
 logger.info("🚀 Initializing detection service...")
-antispoofing_detector = AntiSpoofingDetector()
+antispoofing_detector = EnhancedAntiSpoofingDetector()  # Phase 1: Enhanced heuristics
 document_detector = DocumentDetector(use_ml=True)
 deepfake_detector = DeepfakeDetector()
 image_processor = ImageProcessor()
-logger.info("✅ Service initialized successfully")
+logger.info("✅ Service initialized successfully (Phase 1 Enhanced Anti-Spoofing active)")
 
 
 # ============================================================================
